@@ -4,11 +4,12 @@
 // The dev seed + reset buttons live tucked into the Insights stub so they're
 // easy to find for testing but invisible during normal use.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AppStateProvider, useAppState } from './hooks/useAppState.jsx'
 import CheckinScreen from './components/daily/CheckinScreen.jsx'
 import NavBar from './components/NavBar.jsx'
 import OnboardingFlow from './components/onboarding/OnboardingFlow.jsx'
+import { exportAll, importAll } from './lib/storage.js'
 
 export default function App() {
   return (
@@ -40,6 +41,52 @@ function Shell() {
 function InsightsStub() {
   const { seedSampleData, resetAll, goals, metrics, interventions, pro, setPro } = useAppState()
   const [showDev, setShowDev] = useState(false)
+  const fileInputRef = useRef(null)
+
+  // Download a timestamped JSON snapshot of all Tracked data. Keep this file
+  // somewhere safe (email to yourself, AirDrop off device) — it's the only
+  // backup that survives a PWA delete-and-reinstall.
+  const handleExport = () => {
+    const snapshot = exportAll()
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tracked-backup-${stamp}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Restore from a previously-exported JSON file. Prompts for confirmation
+  // because this overwrites everything currently in localStorage, then
+  // reloads so the in-memory app state picks up the restored values.
+  const handleImportFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const snapshot = JSON.parse(String(reader.result))
+        if (!confirm('Restore from this backup? This will overwrite all current Tracked data.')) return
+        const result = importAll(snapshot)
+        if (!result.ok) {
+          alert(`Import failed: ${result.error}`)
+          return
+        }
+        alert(`Imported: ${result.imported.join(', ') || 'nothing'}. Reloading…`)
+        window.location.reload()
+      } catch (err) {
+        alert(`Could not read backup file: ${err.message}`)
+      } finally {
+        // Allow selecting the same file again if needed
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    }
+    reader.readAsText(file)
+  }
 
   return (
     <div style={{ padding: '40px 0' }}>
@@ -95,6 +142,41 @@ function InsightsStub() {
             <span style={devStyles.hint}>
               Toggles the paywall flags (notes field, etc).
             </span>
+          </div>
+
+          <div style={devStyles.row}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={devStyles.btn}
+              onClick={handleExport}
+            >
+              Export backup
+            </button>
+            <span style={devStyles.hint}>
+              Downloads a JSON file with all your data. Save it somewhere safe.
+            </span>
+          </div>
+
+          <div style={devStyles.row}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={devStyles.btn}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Import backup
+            </button>
+            <span style={devStyles.hint}>
+              Restores from a previously-exported JSON file. Overwrites current data.
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={handleImportFile}
+            />
           </div>
 
           <div style={devStyles.row}>

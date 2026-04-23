@@ -114,5 +114,47 @@ export function resetAll() {
   Object.values(KEYS).forEach(k => localStorage.removeItem(k))
 }
 
+// ---------- Backup / restore ----------
+// exportAll returns a plain object snapshot of every Tracked key so the user
+// can save it to a file and survive delete-and-reinstall, browser wipes, or
+// device changes. Version is stamped so we can migrate old backups later.
+export function exportAll() {
+  const data = {}
+  for (const [label, key] of Object.entries(KEYS)) {
+    data[label] = read(key, null)
+  }
+  return {
+    app: 'tracked',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data,
+  }
+}
+
+// importAll replaces localStorage with the contents of a previously-exported
+// snapshot. Unknown keys are ignored. Returns { ok, imported, skipped } so the
+// caller can show a summary. Does NOT reload the page — the caller should.
+export function importAll(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || snapshot.app !== 'tracked' || !snapshot.data) {
+    return { ok: false, error: 'Not a valid Tracked backup file.' }
+  }
+  const imported = []
+  const skipped = []
+  for (const [label, key] of Object.entries(KEYS)) {
+    if (Object.prototype.hasOwnProperty.call(snapshot.data, label)) {
+      const value = snapshot.data[label]
+      if (value !== null && value !== undefined) {
+        write(key, value)
+        imported.push(label)
+      } else {
+        skipped.push(label)
+      }
+    } else {
+      skipped.push(label)
+    }
+  }
+  return { ok: true, imported, skipped }
+}
+
 // Expose keys for debugging (e.g. inspecting in devtools)
 export const STORAGE_KEYS = KEYS
