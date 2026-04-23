@@ -233,7 +233,13 @@ Respond now with JSON only.`
 // each tracked goal points to via metricId. If the AI fails, a very
 // conservative local fallback produces a minimal goals/metrics structure so
 // the UI doesn't break.
-const GOALS_MAX_TOKENS = 2048
+// Long health narratives (like a full intake paragraph) can produce responses
+// that pack 8 goals + 6–10 metrics with notes. At 2048 we were truncating
+// mid-JSON and silently falling through to localParseGoals, which comma-splits
+// the raw text — producing garbage like "and interact with people better. i
+// think it stems from: genetics" as a standalone goal. Match the stack
+// parser's headroom (8192) so truncation stops being a realistic failure mode.
+const GOALS_MAX_TOKENS = 8192
 
 export async function parseGoalsText({ userText }) {
   const text = (userText || '').trim()
@@ -303,7 +309,7 @@ Shape:
 
       // REQUIRED when type="scale":
       "low": "word shown at 1, e.g. 'anxious', 'drained'",
-      "high": "word shown at 10, e.g. 'calm', 'energized',
+      "high": "word shown at 10, e.g. 'calm', 'energized'",
 
       // REQUIRED when type="periodic":
       "unit": "the unit of measurement, e.g. 'lbs', '%', 'million/mL', 'ng/dL'",
