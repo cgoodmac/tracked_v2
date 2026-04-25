@@ -1,14 +1,16 @@
-// Magic-link login. User types their email, we ask Supabase to send them a
-// link, and the link signs them in on whatever device they tap it on.
-// Designed to match the Welcome screen visually so the auth feels native.
+// Email OTP login. User types their email, we send a 6-digit code, and
+// they enter it right here in the app. No redirect needed — works perfectly
+// inside a PWA on the home screen.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase.js'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
-  const [status, setStatus] = useState('idle') // idle | sending | sent | error
+  const [pin, setPin] = useState(['', '', '', '', '', ''])
+  const [status, setStatus] = useState('idle') // idle | sending | sent | verifying | error
   const [error, setError] = useState('')
+  const pinRefs = useRef([])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -27,18 +29,68 @@ export default function LoginScreen() {
     setError('')
     const { error: err } = await supabase.auth.signInWithOtp({
       email: trimmed,
-      options: {
-        // Where Supabase sends the user after they click the link.
-        // window.location.origin works in dev (localhost:5173) and prod (Vercel).
-        emailRedirectTo: window.location.origin,
-      },
     })
     if (err) {
       setStatus('error')
-      setError(err.message || 'Could not send login link.')
+      setError(err.message || 'Could not send code.')
       return
     }
     setStatus('sent')
+    // Focus the first PIN input after a tick
+    setTimeout(() => pinRefs.current[0]?.focus(), 50)
+  }
+
+  const handlePinChange = (index, value) => {
+    // Only accept digits
+    const digit = value.replace(/\D/g, '').slice(-1)
+    const next = [...pin]
+    next[index] = digit
+    setPin(next)
+    setError('')
+
+    // Auto-advance to next input
+    if (digit && index < 5) {
+      pinRefs.current[index + 1]?.focus()
+    }
+
+    // Auto-submit when all 6 digits are filled
+    if (digit && index === 5 && next.every(d => d)) {
+      verifyPin(next.join(''))
+    }
+  }
+
+  const handlePinKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !pin[index] && index > 0) {
+      pinRefs.current[index - 1]?.focus()
+    }
+  }
+
+  const handlePinPaste = (e) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (pasted.length === 6) {
+      e.preventDefault()
+      const next = pasted.split('')
+      setPin(next)
+      pinRefs.current[5]?.focus()
+      verifyPin(pasted)
+    }
+  }
+
+  const verifyPin = async (code) => {
+    setStatus('verifying')
+    setError('')
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code,
+      type: 'email',
+    })
+    if (err) {
+      setStatus('sent')
+      setPin(['', '', '', '', '', ''])
+      setError(err.message || 'Invalid code. Try again.')
+      setTimeout(() => pinRefs.current[0]?.focus(), 50)
+    }
+    // On success, Supabase fires onAuthStateChange and useAppState picks it up
   }
 
   return (
@@ -46,15 +98,26 @@ export default function LoginScreen() {
       <div style={styles.brand}>TRACKED</div>
 
       <div style={styles.center}>
-        {status === 'sent' ? (
-          <SentState email={email} onTryAgain={() => { setStatus('idle'); setEmail('') }} />
+        {status === 'sent' || status === 'verifying' ? (
+          <VerifyState
+            email={email}
+            pin={pin}
+            pinRefs={pinRefs}
+            error={error}
+            verifying={status === 'verifying'}
+            onPinChange={handlePinChange}
+            onPinKeyDown={handlePinKeyDown}
+            onPinPaste={handlePinPaste}
+            onTryAgain={() => { setStatus('idle'); setEmail(''); setPin(['', '', '', '', '', '']); setError('') }}
+            onResend={handleSubmit}
+          />
         ) : (
           <>
             <h1 style={styles.h1}>
               Sign in to<br />sync across devices.
             </h1>
             <p style={styles.tag}>
-              We'll email you a link. No password to remember.
+              We'll email you a 6-digit code. No password to remember.
             </p>
 
             <form onSubmit={handleSubmit} style={styles.form}>
@@ -77,7 +140,7 @@ export default function LoginScreen() {
                 className="btn btn-primary btn-block"
                 disabled={status === 'sending' || !email.trim()}
               >
-                {status === 'sending' ? 'Sending…' : 'Email me a link'}
+                {status === 'sending' ? 'Sending…' : 'Send me a code'}
               </button>
             </form>
           </>
@@ -91,24 +154,57 @@ export default function LoginScreen() {
   )
 }
 
-function SentState({ email, onTryAgain }) {
+function VerifyState({ email, pin, pinRefs, error, verifying, onPinChange, onPinKeyDown, onPinPaste, onTryAgain, onResend }) {
   return (
     <>
       <h1 style={styles.h1}>
-        Check your inbox.
+        Enter your code.
       </h1>
       <p style={styles.tag}>
-        We sent a sign-in link to <strong style={{ color: 'var(--t1)' }}>{email}</strong>.
-        Open it on this device to finish signing in.
+        We sent a 6-digit code to <strong style={{ color: 'var(--t1)' }}>{email}</strong>.
       </p>
-      <button
-        type="button"
-        className="btn btn-secondary btn-block"
-        onClick={onTryAgain}
-        style={{ marginTop: 12 }}
-      >
-        Use a different email
-      </button>
+
+      <div style={styles.pinRow} onPaste={onPinPaste}>
+        {pin.map((digit, i) => (
+          <input
+            key={i}
+            ref={el => pinRefs.current[i] = el}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={1}
+            value={digit}
+            onChange={(e) => onPinChange(i, e.target.value)}
+            onKeyDown={(e) => onPinKeyDown(i, e)}
+            disabled={verifying}
+            style={styles.pinInput}
+          />
+        ))}
+      </div>
+
+      {error && <div style={styles.error}>{error}</div>}
+      {verifying && <div style={{ fontSize: 14, color: 'var(--t2)' }}>Verifying…</div>}
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onResend}
+          disabled={verifying}
+          style={{ flex: 1, fontSize: 14, padding: '12px 16px' }}
+        >
+          Resend code
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={onTryAgain}
+          disabled={verifying}
+          style={{ flex: 1, fontSize: 14, padding: '12px 16px', color: 'var(--t2)' }}
+        >
+          Different email
+        </button>
+      </div>
     </>
   )
 }
@@ -163,6 +259,26 @@ const styles = {
     color: 'var(--t1)',
     outline: 'none',
     fontFamily: 'var(--font-sans)',
+  },
+  pinRow: {
+    display: 'flex',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  pinInput: {
+    width: 44,
+    height: 52,
+    fontSize: 22,
+    fontWeight: 600,
+    textAlign: 'center',
+    background: 'var(--s2)',
+    border: '1px solid var(--b1)',
+    borderRadius: 'var(--radius-md)',
+    color: 'var(--t1)',
+    outline: 'none',
+    fontFamily: 'var(--font-sans)',
+    caretColor: 'var(--t1)',
   },
   error: {
     fontSize: 13,
