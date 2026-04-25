@@ -7,6 +7,7 @@ export default function NavBar({ current, onChange }) {
     <nav style={styles.nav}>
       <div style={styles.inner}>
         <Tab id="today"    label="Today"    icon="○" current={current} onChange={onChange} />
+        <Tab id="goals"   label="Goals"    icon="◎" current={current} onChange={onChange} />
         <Tab id="insights" label="Insights" icon="◐" current={current} onChange={onChange} />
       </div>
     </nav>
@@ -48,7 +49,7 @@ const styles = {
     maxWidth: 480,
     margin: '0 auto',
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr 1fr',
     padding: '6px 8px',
   },
   tab: {

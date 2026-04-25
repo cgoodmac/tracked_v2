@@ -1,10 +1,14 @@
 // Central app state hook. Reads from localStorage on mount, exposes setters
-// that persist back. All components share one instance via the context below.
+// that persist back. When Supabase is configured and the user is signed in,
+// also pulls the canonical state from the server on sign-in and pushes
+// changes back debounced. All components share one instance via the context.
 
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import * as storage from '../lib/storage.js'
 import { applyActions } from '../lib/actions.js'
 import { todayISO, SEED_GOALS, SEED_METRICS, SEED_INTERVENTIONS } from '../lib/constants.js'
+import { supabase, isSupabaseConfigured } from '../lib/supabase.js'
+import { pullState, pushState, hydrateFromServer, makeDebouncedPush } from '../lib/sync.js'
 
 const AppStateContext = createContext(null)
 
@@ -17,6 +21,31 @@ export function AppStateProvider({ children }) {
   const [checkins, setCheckinsState]   = useState(() => storage.getCheckins())
   const [logs, setLogsState]           = useState(() => storage.getLogs())
   const [measurements, setMeasurementsState] = useState(() => storage.getMeasurements())
+
+  // ---- Auth + sync state ----
+  // authStatus is 'loading' until Supabase tells us yes/no on the session.
+  // When local-only (no Supabase configured), we resolve to 'localOnly' so
+  // App.jsx can render the app directly without showing a login screen.
+  const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'loading' : 'localOnly')
+  const [authUser, setAuthUser] = useState(null)
+  const [syncStatus, setSyncStatus] = useState('idle') // idle | syncing | synced | error
+  const hydratedRef = useRef(false)
+  const pusherRef = useRef(null)
+  if (!pusherRef.current) pusherRef.current = makeDebouncedPush(800)
+
+  // Reload all React state from whatever's currently in localStorage.
+  // Used after we hydrate localStorage from a server pull, and after sign-out
+  // when we wipe the cache.
+  const reloadStateFromStorage = useCallback(() => {
+    setOnboardedState(storage.isOnboarded())
+    setProState(storage.isPro())
+    setGoalsState(storage.getGoals())
+    setMetricsState(storage.getMetrics())
+    setInterventionsState(storage.getInterventions())
+    setCheckinsState(storage.getCheckins())
+    setLogsState(storage.getLogs())
+    setMeasurementsState(storage.getMeasurements())
+  }, [])
 
   // ---- Setters that also persist ----
   const setOnboarded = useCallback((v) => { storage.setOnboarded(v); setOnboardedState(!!v) }, [])
@@ -188,6 +217,94 @@ export function AppStateProvider({ children }) {
     setMeasurementsState({})
   }, [])
 
+  // ---- Sign out: flush any pending push, sign out of Supabase, wipe local cache ----
+  const signOut = useCallback(async () => {
+    if (!supabase) return
+    try { await pusherRef.current?.flushNow() } catch { /* swallow */ }
+    await supabase.auth.signOut()
+    storage.resetAll()
+    hydratedRef.current = false
+    setOnboardedState(false)
+    setProState(false)
+    setGoalsState([])
+    setMetricsState([])
+    setInterventionsState([])
+    setCheckinsState({})
+    setLogsState({})
+    setMeasurementsState({})
+  }, [])
+
+  // ---- Auth lifecycle ----
+  // Establishes the initial session and subscribes to changes (sign-in via
+  // magic link, sign-out, token refresh). Runs once on mount.
+  useEffect(() => {
+    if (!supabase) return
+    let unsub = () => {}
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthUser(session?.user ?? null)
+      setAuthStatus(session?.user ? 'signedIn' : 'signedOut')
+    })
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      setAuthUser(session?.user ?? null)
+      setAuthStatus(session?.user ? 'signedIn' : 'signedOut')
+      if (event === 'SIGNED_OUT') {
+        hydratedRef.current = false
+      }
+    })
+    unsub = () => data.subscription.unsubscribe()
+    return unsub
+  }, [])
+
+  // ---- On sign-in: pull from server, hydrate local cache ----
+  // First-time login (no server row yet): we push local data up so the user
+  // doesn't lose anything they tracked before signing up. Subsequent logins:
+  // server wins, local cache is rewritten to match.
+  useEffect(() => {
+    if (!authUser || hydratedRef.current) return
+    let cancelled = false
+    setSyncStatus('syncing')
+    pullState(authUser.id).then(async (row) => {
+      if (cancelled) return
+      const serverData = row?.data
+      const serverHasData = serverData && typeof serverData === 'object' &&
+        Object.values(serverData).some(v => v !== null && v !== undefined &&
+          !(Array.isArray(v) && v.length === 0) &&
+          !(typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0))
+      if (serverHasData) {
+        hydrateFromServer(serverData)
+        reloadStateFromStorage()
+      } else {
+        // First sync — push our local data up so it lives on the server.
+        await pushState(authUser.id)
+      }
+      hydratedRef.current = true
+      setSyncStatus('synced')
+    }).catch((err) => {
+      console.error('[tracked] hydration failed', err)
+      if (!cancelled) {
+        hydratedRef.current = true // don't loop on errors
+        setSyncStatus('error')
+      }
+    })
+    return () => { cancelled = true }
+  }, [authUser, reloadStateFromStorage])
+
+  // ---- Push-on-change ----
+  // After hydration, schedule a debounced push whenever any tracked piece of
+  // state changes. The pusher coalesces rapid edits into one network call.
+  useEffect(() => {
+    if (!authUser || !hydratedRef.current) return
+    setSyncStatus('syncing')
+    pusherRef.current.push(authUser.id, (result) => {
+      setSyncStatus(result ? 'synced' : 'error')
+    })
+  }, [
+    authUser,
+    onboarded, pro,
+    goals, metrics, interventions,
+    checkins, logs, measurements,
+  ])
+
   // Light derived helpers commonly needed by the UI
   const derived = useMemo(() => {
     const today = todayISO()
@@ -226,6 +343,8 @@ export function AppStateProvider({ children }) {
     addIntervention, addMetric, logMeasurement, removeMeasurement,
     // dev
     seedSampleData, resetAll,
+    // auth + sync
+    authStatus, authUser, syncStatus, signOut,
     // derived
     ...derived,
   }

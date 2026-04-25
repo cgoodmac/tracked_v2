@@ -7,8 +7,10 @@
 import { useRef, useState } from 'react'
 import { AppStateProvider, useAppState } from './hooks/useAppState.jsx'
 import CheckinScreen from './components/daily/CheckinScreen.jsx'
+import GoalsScreen from './components/GoalsScreen.jsx'
 import NavBar from './components/NavBar.jsx'
 import OnboardingFlow from './components/onboarding/OnboardingFlow.jsx'
+import LoginScreen from './components/auth/LoginScreen.jsx'
 import { exportAll, importAll } from './lib/storage.js'
 
 export default function App() {
@@ -20,8 +22,14 @@ export default function App() {
 }
 
 function Shell() {
-  const { onboarded } = useAppState()
+  const { onboarded, authStatus } = useAppState()
   const [tab, setTab] = useState('today')
+
+  // Auth gate: while we're checking the session, show nothing (avoids a flash
+  // of LoginScreen for already-signed-in users). When signed out, show login.
+  // 'localOnly' means Supabase isn't configured — let the app run unauthenticated.
+  if (authStatus === 'loading') return <BootSplash />
+  if (authStatus === 'signedOut') return <LoginScreen />
 
   if (!onboarded) return <OnboardingFlow />
 
@@ -29,6 +37,7 @@ function Shell() {
     <div className="app">
       <div style={{ padding: '0 20px' }}>
         {tab === 'today' && <CheckinScreen />}
+        {tab === 'goals' && <GoalsScreen />}
         {tab === 'insights' && <InsightsStub />}
       </div>
       <NavBar current={tab} onChange={setTab} />
@@ -36,10 +45,24 @@ function Shell() {
   )
 }
 
+// Quiet placeholder while we check the Supabase session on app load.
+// Same background color as the rest of the app so it doesn't flicker.
+function BootSplash() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--bg)',
+    }} />
+  )
+}
+
 // Placeholder for the Insights surface. Also hosts a small "dev tools" panel
 // (sample data seed + reset all) until the real Insights screen is built.
 function InsightsStub() {
-  const { seedSampleData, resetAll, goals, metrics, interventions, pro, setPro } = useAppState()
+  const {
+    seedSampleData, resetAll, goals, metrics, interventions, pro, setPro,
+    authUser, authStatus, syncStatus, signOut,
+  } = useAppState()
   const [showDev, setShowDev] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -102,6 +125,31 @@ function InsightsStub() {
         {' '}<span className="mono">{metrics.length}</span> metrics,
         and <span className="mono">{interventions.length}</span> interventions tracked.
       </div>
+
+      {authStatus === 'signedIn' && (
+        <div style={accountStyles.row}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={accountStyles.label}>Signed in as</div>
+            <div style={accountStyles.email}>{authUser?.email}</div>
+            <div style={accountStyles.sync}>
+              <SyncDot status={syncStatus} />
+              <span>{syncStatusLabel(syncStatus)}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 12, padding: '6px 10px', color: 'var(--t2)' }}
+            onClick={async () => {
+              if (confirm('Sign out? Your local cache will be cleared on this device.')) {
+                await signOut()
+              }
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
 
       <button
         type="button"
@@ -198,6 +246,66 @@ function InsightsStub() {
       )}
     </div>
   )
+}
+
+function SyncDot({ status }) {
+  const color =
+    status === 'synced' ? '#16A34A' :
+    status === 'syncing' ? '#D97706' :
+    status === 'error' ? '#B42318' :
+    'var(--t3)'
+  return (
+    <span style={{
+      display: 'inline-block',
+      width: 8,
+      height: 8,
+      borderRadius: '50%',
+      background: color,
+      marginRight: 6,
+    }} />
+  )
+}
+
+function syncStatusLabel(status) {
+  if (status === 'synced')  return 'Synced'
+  if (status === 'syncing') return 'Syncing…'
+  if (status === 'error')   return 'Sync error'
+  return 'Idle'
+}
+
+const accountStyles = {
+  row: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    border: '1px solid var(--b1)',
+    borderRadius: 12,
+    background: 'var(--s2)',
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 11,
+    color: 'var(--t3)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    marginBottom: 4,
+  },
+  email: {
+    fontSize: 14,
+    color: 'var(--t1)',
+    fontWeight: 500,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  sync: {
+    fontSize: 12,
+    color: 'var(--t2)',
+    marginTop: 6,
+    display: 'flex',
+    alignItems: 'center',
+  },
 }
 
 const devStyles = {
