@@ -5,10 +5,14 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const SUPABASE_PUBLISHABLE_KEY = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim()
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY)
+function isValidUrl(s) {
+  try { return /^https?:/.test(new URL(s).protocol) } catch { return false }
+}
+
+export const isSupabaseConfigured = isValidUrl(SUPABASE_URL) && SUPABASE_PUBLISHABLE_KEY.length > 0
 
 if (!isSupabaseConfigured) {
   // Don't throw — let the app boot in "local-only" mode if env vars are
