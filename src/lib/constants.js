@@ -79,5 +79,5 @@ export const SEED_INTERVENTIONS = [
   { id: 'seed-5', name: 'L-Theanine',          type: 'supplement', dose: '200mg',   frequency: 'Daily', status: 'active',  startDate: '2026-03-05', endDate: null, notes: 'with coffee' },
   { id: 'seed-6', name: 'Trintellix',          type: 'medication', dose: '10mg',    frequency: 'Daily', status: 'active',  startDate: '2025-09-08', endDate: null, notes: 'for anxiety' },
   { id: 'seed-7', name: 'Morning run',         type: 'exercise',   dose: '20 min',  frequency: 'Daily', status: 'active',  startDate: '2026-03-20', endDate: null, notes: null          },
-  { id: 'seed-8', name: 'Melatonin',           type: 'supplement', dose: '300mcg',  frequency: 'As needed', status: 'active', startDate: '2026-03-01', endDate: null, notes: 'on rough nights' },
+  { id: 'seed-8', name: 'Melatonin',           type: 'supplement', dose: '300mcg',  frequency: 'Occasional', status: 'active', startDate: '2026-03-01', endDate: null, notes: 'on rough nights' },
 ]

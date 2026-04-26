@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { INTERVENTION_TYPES, TYPE_BY_KEY } from '../../lib/constants.js'
 
-const FREQUENCIES = ['Daily', '2x daily', '3x daily', 'Weekly', 'As needed']
+const FREQUENCIES = ['Daily', '2x daily', '3x daily', 'Weekly', 'Occasional']
 
 export default function AddInterventionForm({ onAdd }) {
   const [open, setOpen] = useState(false)
