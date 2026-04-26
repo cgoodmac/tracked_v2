@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase.js'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
-  const [pin, setPin] = useState(['', '', '', '', '', ''])
+  const [pin, setPin] = useState(['', '', '', '', '', '', '', ''])
   const [status, setStatus] = useState('idle') // idle | sending | sent | verifying | error
   const [error, setError] = useState('')
   const pinRefs = useRef([])
@@ -49,12 +49,12 @@ export default function LoginScreen() {
     setError('')
 
     // Auto-advance to next input
-    if (digit && index < 5) {
+    if (digit && index < 7) {
       pinRefs.current[index + 1]?.focus()
     }
 
     // Auto-submit when all 6 digits are filled
-    if (digit && index === 5 && next.every(d => d)) {
+    if (digit && index === 7 && next.every(d => d)) {
       verifyPin(next.join(''))
     }
   }
@@ -66,12 +66,12 @@ export default function LoginScreen() {
   }
 
   const handlePinPaste = (e) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pasted.length === 6) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8)
+    if (pasted.length === 8) {
       e.preventDefault()
       const next = pasted.split('')
       setPin(next)
-      pinRefs.current[5]?.focus()
+      pinRefs.current[7]?.focus()
       verifyPin(pasted)
     }
   }
@@ -86,7 +86,7 @@ export default function LoginScreen() {
     })
     if (err) {
       setStatus('sent')
-      setPin(['', '', '', '', '', ''])
+      setPin(['', '', '', '', '', '', '', ''])
       setError(err.message || 'Invalid code. Try again.')
       setTimeout(() => pinRefs.current[0]?.focus(), 50)
     }
@@ -108,7 +108,7 @@ export default function LoginScreen() {
             onPinChange={handlePinChange}
             onPinKeyDown={handlePinKeyDown}
             onPinPaste={handlePinPaste}
-            onTryAgain={() => { setStatus('idle'); setEmail(''); setPin(['', '', '', '', '', '']); setError('') }}
+            onTryAgain={() => { setStatus('idle'); setEmail(''); setPin(['', '', '', '', '', '', '', '']); setError('') }}
             onResend={handleSubmit}
           />
         ) : (
@@ -117,7 +117,7 @@ export default function LoginScreen() {
               Sign in to<br />sync across devices.
             </h1>
             <p style={styles.tag}>
-              We'll email you a 6-digit code. No password to remember.
+              We'll email you a code. No password to remember.
             </p>
 
             <form onSubmit={handleSubmit} style={styles.form}>
@@ -161,7 +161,7 @@ function VerifyState({ email, pin, pinRefs, error, verifying, onPinChange, onPin
         Enter your code.
       </h1>
       <p style={styles.tag}>
-        We sent a 6-digit code to <strong style={{ color: 'var(--t1)' }}>{email}</strong>.
+        We sent a code to <strong style={{ color: 'var(--t1)' }}>{email}</strong>.
       </p>
 
       <div style={styles.pinRow} onPaste={onPinPaste}>
@@ -267,9 +267,9 @@ const styles = {
     marginTop: 8,
   },
   pinInput: {
-    width: 44,
-    height: 52,
-    fontSize: 22,
+    width: 38,
+    height: 48,
+    fontSize: 20,
     fontWeight: 600,
     textAlign: 'center',
     background: 'var(--s2)',
