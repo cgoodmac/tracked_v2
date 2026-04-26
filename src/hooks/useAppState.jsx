@@ -90,6 +90,8 @@ export function AppStateProvider({ children }) {
       startDate: partial.startDate || todayISO(),
       endDate: null,
       notes: partial.notes ? String(partial.notes).trim() : null,
+      trackQuantity: partial.trackQuantity || false,
+      quantityLabel: partial.quantityLabel ? String(partial.quantityLabel).trim() : null,
     }
     setInterventionsState(prev => {
       const list = [...(prev || []), next]

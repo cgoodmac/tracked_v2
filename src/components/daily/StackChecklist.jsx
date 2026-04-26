@@ -4,7 +4,7 @@
 
 import { iconForType } from '../../lib/constants.js'
 
-export default function StackChecklist({ interventions, log, onToggle, onToggleAll, disabled = false }) {
+export default function StackChecklist({ interventions, log, onToggle, onToggleAll, quantities = {}, onQuantityChange, disabled = false }) {
   const active = interventions.filter(i => i.status !== 'stopped')
   const allChecked = active.length > 0 && active.every(i => log[i.id] !== false)
 
@@ -31,8 +31,9 @@ export default function StackChecklist({ interventions, log, onToggle, onToggleA
         <ul style={styles.list}>
           {active.map(item => {
             const taken = log[item.id] !== false // default to taken
+            const qty = quantities[item.id]
             return (
-              <li key={item.id} style={styles.item}>
+              <li key={item.id} style={item.trackQuantity ? styles.itemWithQty : styles.item}>
                 <button
                   type="button"
                   className="tracked-check"
@@ -50,9 +51,32 @@ export default function StackChecklist({ interventions, log, onToggle, onToggleA
                 }}>
                   {item.name}
                 </span>
-                {item.dose && (
+                {item.trackQuantity ? (
+                  <div style={styles.stepper}>
+                    <button
+                      type="button"
+                      style={styles.stepBtn}
+                      disabled={disabled || (qty || 0) <= 0}
+                      onClick={() => onQuantityChange && onQuantityChange(item.id, Math.max(0, (qty || 0) - 1))}
+                      aria-label="Decrease"
+                    >−</button>
+                    <span className="mono" style={styles.stepValue}>
+                      {qty ?? 0}
+                    </span>
+                    <button
+                      type="button"
+                      style={styles.stepBtn}
+                      disabled={disabled}
+                      onClick={() => onQuantityChange && onQuantityChange(item.id, (qty || 0) + 1)}
+                      aria-label="Increase"
+                    >+</button>
+                    {item.quantityLabel && (
+                      <span style={styles.stepUnit}>{item.quantityLabel}</span>
+                    )}
+                  </div>
+                ) : item.dose ? (
                   <span className="mono" style={styles.itemDose}>{item.dose}</span>
-                )}
+                ) : null}
               </li>
             )
           })}
@@ -104,9 +128,51 @@ const styles = {
     fontWeight: 500,
     letterSpacing: '-0.01em',
   },
+  itemWithQty: {
+    display: 'grid',
+    gridTemplateColumns: '20px 20px 1fr auto',
+    alignItems: 'center',
+    gap: 10,
+    padding: '6px 0',
+  },
   itemDose: {
     fontSize: 13,
     color: 'var(--t3)',
     fontVariantNumeric: 'tabular-nums',
+  },
+  stepper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: '1px solid var(--b1)',
+    background: 'var(--s2)',
+    color: 'var(--t1)',
+    fontSize: 16,
+    fontWeight: 600,
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  stepValue: {
+    minWidth: 28,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+    color: 'var(--t1)',
+  },
+  stepUnit: {
+    fontSize: 12,
+    color: 'var(--t3)',
+    marginLeft: 2,
+    fontWeight: 500,
   },
 }

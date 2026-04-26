@@ -55,6 +55,7 @@ export default function CheckinScreen() {
   const initialScores = useMemo(() => seedScoresFor(today, checkins, metrics), [today, checkins, metrics])
   const [scores, setScores] = useState(initialScores)
   const [takenMap, setTakenMap] = useState(() => seedTakenFor(today, interventions, logs))
+  const [quantityMap, setQuantityMap] = useState(() => (logs[today]?._quantities || {}))
   const [notes, setNotes] = useState(() => todaysCheckin?.notes ?? '')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
@@ -65,9 +66,11 @@ export default function CheckinScreen() {
   // onboarding just finished).
   useEffect(() => { setScores(seedScoresFor(today, checkins, metrics)) }, [today, checkins, metrics])
   useEffect(() => { setTakenMap(seedTakenFor(today, interventions, logs)) }, [today, interventions, logs])
+  useEffect(() => { setQuantityMap(logs[today]?._quantities || {}) }, [today, logs])
 
   const setMetric = (id, v) => setScores(prev => ({ ...prev, [id]: v }))
   const toggleItem = (id, taken) => setTakenMap(prev => ({ ...prev, [id]: taken }))
+  const setQuantity = (id, qty) => setQuantityMap(prev => ({ ...prev, [id]: qty }))
   const toggleAll = (taken) => {
     const next = {}
     for (const i of interventions.filter(x => x.status !== 'stopped')) next[i.id] = !!taken
@@ -78,7 +81,10 @@ export default function CheckinScreen() {
   // Adding to the stack from here: save it and pre-check it for today.
   const handleAddIntervention = (data) => {
     const created = addIntervention(data)
-    if (created) setTakenMap(prev => ({ ...prev, [created.id]: true }))
+    if (created) {
+      setTakenMap(prev => ({ ...prev, [created.id]: true }))
+      if (created.trackQuantity) setQuantityMap(prev => ({ ...prev, [created.id]: 0 }))
+    }
   }
 
   // Adding a new metric from here: save it and seed today's score at 5 so
@@ -162,7 +168,14 @@ export default function CheckinScreen() {
     const payload = { scores: { ...scores } }
     if (pro && notes.trim()) payload.notes = notes.trim()
     upsertCheckin(payload, today)
-    upsertLog({ ...seedTakenFor(today, interventions, {}), ...takenMap }, today)
+    const logPayload = { ...seedTakenFor(today, interventions, {}), ...takenMap }
+    // Persist quantities for interventions that track them
+    const activeQty = {}
+    for (const i of interventions.filter(x => x.status !== 'stopped' && x.trackQuantity)) {
+      if (quantityMap[i.id] != null) activeQty[i.id] = quantityMap[i.id]
+    }
+    if (Object.keys(activeQty).length) logPayload._quantities = activeQty
+    upsertLog(logPayload, today)
     setJustLogged(true)
     setEditing(false)
     // The LogConfirmation overlay manages its own auto-dismiss timer and
@@ -251,6 +264,8 @@ export default function CheckinScreen() {
           log={takenMap}
           onToggle={toggleItem}
           onToggleAll={toggleAll}
+          quantities={quantityMap}
+          onQuantityChange={setQuantity}
         />
         <AddInterventionForm onAdd={handleAddIntervention} />
       </section>
@@ -304,6 +319,7 @@ function Header({ date }) {
 function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins, logs, onEdit }) {
   const active = interventions.filter(i => i.status !== 'stopped')
   const takenCount = active.filter(i => log[i.id] !== false).length
+  const quantities = log._quantities || {}
   const scores = checkin?.scores || {}
 
   // Choose a responsive column count: 5 if the user has ≤5 metrics (matches
@@ -367,9 +383,13 @@ function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins
                 >
                   {item.name}
                 </span>
-                {item.dose && (
+                {item.trackQuantity ? (
+                  <span className="mono" style={styles.readDose}>
+                    {quantities[item.id] ?? 0}{item.quantityLabel ? ` ${item.quantityLabel}` : ''}
+                  </span>
+                ) : item.dose ? (
                   <span className="mono" style={styles.readDose}>{item.dose}</span>
-                )}
+                ) : null}
               </li>
             )
           })}

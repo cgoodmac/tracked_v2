@@ -13,12 +13,16 @@ export default function AddInterventionForm({ onAdd }) {
   const [type, setType] = useState('supplement')
   const [dose, setDose] = useState('')
   const [frequency, setFrequency] = useState('Daily')
+  const [trackQuantity, setTrackQuantity] = useState(false)
+  const [quantityLabel, setQuantityLabel] = useState('')
 
   const reset = () => {
     setName('')
     setType('supplement')
     setDose('')
     setFrequency('Daily')
+    setTrackQuantity(false)
+    setQuantityLabel('')
   }
 
   const handleCancel = () => {
@@ -29,7 +33,11 @@ export default function AddInterventionForm({ onAdd }) {
   const handleSave = () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    onAdd({ name: trimmed, type, dose: dose.trim() || null, frequency })
+    onAdd({
+      name: trimmed, type, dose: dose.trim() || null, frequency,
+      trackQuantity: trackQuantity || false,
+      quantityLabel: trackQuantity && quantityLabel.trim() ? quantityLabel.trim() : null,
+    })
     reset()
     setOpen(false)
   }
@@ -113,6 +121,28 @@ export default function AddInterventionForm({ onAdd }) {
             ))}
           </select>
         </label>
+      </div>
+
+      <div style={styles.quantityRow}>
+        <label style={styles.quantityToggle}>
+          <input
+            type="checkbox"
+            checked={trackQuantity}
+            onChange={(e) => setTrackQuantity(e.target.checked)}
+            style={{ accentColor: 'var(--accent)' }}
+          />
+          <span style={styles.quantityToggleLabel}>Track quantity</span>
+        </label>
+        {trackQuantity && (
+          <input
+            type="text"
+            value={quantityLabel}
+            onChange={(e) => setQuantityLabel(e.target.value)}
+            placeholder="unit (e.g. drinks, mg)"
+            className="tracked-input"
+            style={{ ...styles.input, flex: 1, maxWidth: 180 }}
+          />
+        )}
       </div>
 
       <div style={styles.actions}>
@@ -204,5 +234,23 @@ const styles = {
   saveBtn: {
     fontSize: 13,
     padding: '6px 16px',
+  },
+  quantityRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  quantityToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  quantityToggleLabel: {
+    fontSize: 13,
+    color: 'var(--t2)',
+    fontWeight: 500,
   },
 }

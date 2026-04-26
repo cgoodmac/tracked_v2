@@ -187,13 +187,20 @@ export function applyAction(state, action, todayISO) {
     }
 
     case 'log_taken': {
-      // data.items: [{ name?, id?, taken: boolean }, ...]  OR  data: { <id>: bool }
+      // data.items: [{ name?, id?, taken: boolean, quantity?: number }, ...]  OR  data: { <id>: bool }
       const todayLog = { ...(s.logs[todayISO] || {}) }
+      const todayQty = { ...(todayLog._quantities || {}) }
       const items = Array.isArray(data.items) ? data.items : null
       if (items) {
         for (const it of items) {
           const hit = findIntervention(s.interventions, it.id, it.name)
-          if (hit) todayLog[hit.id] = !!it.taken
+          if (hit) {
+            todayLog[hit.id] = !!it.taken
+            if (it.quantity != null && hit.trackQuantity) {
+              const num = Number(it.quantity)
+              if (Number.isFinite(num) && num >= 0) todayQty[hit.id] = num
+            }
+          }
         }
       } else {
         // Fallback: treat data as { id: bool }
@@ -201,6 +208,7 @@ export function applyAction(state, action, todayISO) {
           if (typeof v === 'boolean') todayLog[k] = v
         }
       }
+      if (Object.keys(todayQty).length) todayLog._quantities = todayQty
       return { ...s, logs: { ...s.logs, [todayISO]: todayLog } }
     }
 
@@ -289,5 +297,7 @@ function normalizeIntervention(data, todayISO) {
     startDate: data.startDate || todayISO,
     endDate: data.endDate ?? null,
     notes: data.notes ?? null,
+    trackQuantity: data.trackQuantity || false,
+    quantityLabel: data.quantityLabel ?? null,
   }
 }
