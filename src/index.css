@@ -55,6 +55,21 @@
 
 html, body, #root {
   height: 100%;
+  min-height: 100dvh;
+}
+
+/* Fixed bottom nav — safe-area via CSS so env() is always resolved */
+.tracked-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  border-top: 1px solid var(--b1);
+  background: var(--blur, var(--bg));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 html {

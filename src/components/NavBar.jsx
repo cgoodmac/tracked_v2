@@ -4,7 +4,7 @@
 
 export default function NavBar({ current, onChange }) {
   return (
-    <nav style={styles.nav}>
+    <nav className="tracked-nav">
       <div style={styles.inner}>
         <Tab id="today"    label="Today"    icon="○" current={current} onChange={onChange} />
         <Tab id="goals"   label="Goals"    icon="◎" current={current} onChange={onChange} />
@@ -33,18 +33,6 @@ function Tab({ id, label, icon, current, onChange }) {
 }
 
 const styles = {
-  nav: {
-    position: 'fixed',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'var(--blur, var(--bg))',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderTop: '1px solid var(--b1)',
-    paddingBottom: 'env(safe-area-inset-bottom)',
-    zIndex: 20,
-  },
   inner: {
     maxWidth: 480,
     margin: '0 auto',
