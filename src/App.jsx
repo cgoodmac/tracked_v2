@@ -112,7 +112,7 @@ function InsightsStub() {
   }
 
   return (
-    <div style={{ padding: '40px 0' }}>
+    <div style={{ padding: '40px 0 120px' }}>
       <div className="label-section" style={{ marginBottom: 8 }}>Insights</div>
       <h2 style={{ fontSize: 20, marginBottom: 12 }}>Coming soon</h2>
       <p style={{ color: 'var(--t2)', fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
