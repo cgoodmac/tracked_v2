@@ -14,7 +14,7 @@ export default function GoalsScreen() {
 
   if (goals.length === 0) {
     return (
-      <div style={{ padding: '40px 0' }}>
+      <div style={{ padding: 'calc(env(safe-area-inset-top) + 16px) 0' }}>
         <div className="label-section" style={{ marginBottom: 8 }}>Goals</div>
         <p style={{ color: 'var(--t2)', fontSize: 14, lineHeight: 1.5 }}>
           No goals set up yet.
@@ -24,7 +24,7 @@ export default function GoalsScreen() {
   }
 
   return (
-    <div style={{ padding: '40px 0 120px' }}>
+    <div style={{ padding: 'calc(env(safe-area-inset-top) + 16px) 0 120px' }}>
       <div className="label-section" style={{ marginBottom: 8 }}>Goals</div>
       <h2 style={{ fontSize: 20, marginBottom: 4 }}>What you're working toward</h2>
       <p style={{ color: 'var(--t2)', fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
