@@ -32,15 +32,29 @@ export default function StackChecklist({ interventions, log, onToggle, onToggleA
           {active.map(item => {
             const taken = log[item.id] !== false // default to taken
             const qty = quantities[item.id]
+            const rowStyle = {
+              ...(item.trackQuantity ? styles.itemWithQty : styles.item),
+              cursor: disabled ? 'default' : 'pointer',
+              userSelect: 'none',
+              WebkitTapHighlightColor: 'transparent',
+            }
+            const handleRowToggle = () => !disabled && onToggle && onToggle(item.id, !taken)
             return (
-              <li key={item.id} style={item.trackQuantity ? styles.itemWithQty : styles.item}>
+              <li
+                key={item.id}
+                style={rowStyle}
+                onClick={handleRowToggle}
+              >
                 <button
                   type="button"
                   className="tracked-check"
                   data-checked={taken ? 'true' : 'false'}
                   aria-pressed={taken}
                   aria-label={`${item.name} taken`}
-                  onClick={() => !disabled && onToggle && onToggle(item.id, !taken)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!disabled && onToggle) onToggle(item.id, !taken)
+                  }}
                   disabled={disabled}
                 />
                 <span style={styles.itemIcon} aria-hidden="true">{iconForType(item.type)}</span>
@@ -52,12 +66,15 @@ export default function StackChecklist({ interventions, log, onToggle, onToggleA
                   {item.name}
                 </span>
                 {item.trackQuantity ? (
-                  <div style={styles.stepper}>
+                  <div style={styles.stepper} onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       style={styles.stepBtn}
                       disabled={disabled || (qty || 0) <= 0}
-                      onClick={() => onQuantityChange && onQuantityChange(item.id, Math.max(0, (qty || 0) - 1))}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onQuantityChange && onQuantityChange(item.id, Math.max(0, (qty || 0) - 1))
+                      }}
                       aria-label="Decrease"
                     >−</button>
                     <span className="mono" style={styles.stepValue}>
@@ -67,7 +84,10 @@ export default function StackChecklist({ interventions, log, onToggle, onToggleA
                       type="button"
                       style={styles.stepBtn}
                       disabled={disabled}
-                      onClick={() => onQuantityChange && onQuantityChange(item.id, (qty || 0) + 1)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onQuantityChange && onQuantityChange(item.id, (qty || 0) + 1)
+                      }}
                       aria-label="Increase"
                     >+</button>
                     {item.quantityLabel && (
