@@ -13,6 +13,8 @@
 //     update the sliders and checkboxes for them.
 //  4. Tap "Log day" → persist + show success + flip to read-only.
 //  5. Tapping "Edit" on the read-only view returns to edit mode for today.
+//  6. Date nav arrows (or tapping a 7-day strip dot) let you browse and
+//     edit previous days. Future dates are blocked.
 
 import { useEffect, useMemo, useState } from 'react'
 import { todayISO, formatDateFull, iconForType } from '../../lib/constants.js'
@@ -46,27 +48,46 @@ export default function CheckinScreen() {
     [allMetrics],
   )
 
+  // ----- Date navigation -----
+  const [selectedDate, setSelectedDate] = useState(today)
+  const isToday = selectedDate === today
+  const selectedCheckin = checkins[selectedDate] || null
+
+  const goBack = () => setSelectedDate(d => addDaysIso(d, -1))
+  const goForward = () => {
+    setSelectedDate(d => {
+      const next = addDaysIso(d, 1)
+      return next <= today ? next : d
+    })
+  }
+  const jumpTo = (iso) => { if (iso <= today) setSelectedDate(iso) }
+
   // ----- Edit vs read-only -----
-  const alreadyLogged = hasCompleteCheckin(todaysCheckin, metrics)
+  const alreadyLogged = hasCompleteCheckin(selectedCheckin, metrics)
   const [editing, setEditing] = useState(!alreadyLogged)
-  useEffect(() => { if (!alreadyLogged) setEditing(true) }, [alreadyLogged])
+  // Reset edit state when the selected date changes
+  useEffect(() => {
+    const logged = hasCompleteCheckin(checkins[selectedDate] || null, metrics)
+    setEditing(!logged)
+  }, [selectedDate, checkins, metrics])
 
   // ----- Local working state (staged before "Log day") -----
-  const initialScores = useMemo(() => seedScoresFor(today, checkins, metrics), [today, checkins, metrics])
+  const initialScores = useMemo(() => seedScoresFor(selectedDate, checkins, metrics), [selectedDate, checkins, metrics])
   const [scores, setScores] = useState(initialScores)
-  const [takenMap, setTakenMap] = useState(() => seedTakenFor(today, interventions, logs))
-  const [quantityMap, setQuantityMap] = useState(() => (logs[today]?._quantities || {}))
-  const [notes, setNotes] = useState(() => todaysCheckin?.notes ?? '')
+  const [takenMap, setTakenMap] = useState(() => seedTakenFor(selectedDate, interventions, logs))
+  const [quantityMap, setQuantityMap] = useState(() => (logs[selectedDate]?._quantities || {}))
+  const [notes, setNotes] = useState(() => selectedCheckin?.notes ?? '')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
   const [aiError, setAiError] = useState('')
   const [justLogged, setJustLogged] = useState(false)
 
-  // Re-seed if app state changes underneath us (e.g. dev seed, day rollover,
-  // onboarding just finished).
-  useEffect(() => { setScores(seedScoresFor(today, checkins, metrics)) }, [today, checkins, metrics])
-  useEffect(() => { setTakenMap(seedTakenFor(today, interventions, logs)) }, [today, interventions, logs])
-  useEffect(() => { setQuantityMap(logs[today]?._quantities || {}) }, [today, logs])
+  // Re-seed when selected date or app state changes underneath us
+  // (e.g. dev seed, day rollover, date nav, onboarding just finished).
+  useEffect(() => { setScores(seedScoresFor(selectedDate, checkins, metrics)) }, [selectedDate, checkins, metrics])
+  useEffect(() => { setTakenMap(seedTakenFor(selectedDate, interventions, logs)) }, [selectedDate, interventions, logs])
+  useEffect(() => { setQuantityMap(logs[selectedDate]?._quantities || {}) }, [selectedDate, logs])
+  useEffect(() => { setNotes((checkins[selectedDate] || {}).notes ?? '') }, [selectedDate, checkins])
 
   const setMetric = (id, v) => setScores(prev => ({ ...prev, [id]: v }))
   const toggleItem = (id, taken) => setTakenMap(prev => ({ ...prev, [id]: taken }))
@@ -108,8 +129,8 @@ export default function CheckinScreen() {
         metrics,
         interventions,
         todaysCheckin: {
-          ...todaysCheckin,
-          scores: { ...(todaysCheckin?.scores || {}), ...scores },
+          ...selectedCheckin,
+          scores: { ...(selectedCheckin?.scores || {}), ...scores },
         },
       })
 
@@ -133,22 +154,22 @@ export default function CheckinScreen() {
         interventions,
         checkins: {
           ...checkins,
-          [today]: { ...(todaysCheckin || {}), date: today, scores: { ...scores } },
+          [selectedDate]: { ...(selectedCheckin || {}), date: selectedDate, scores: { ...scores } },
         },
-        logs:     { ...logs,     [today]: { ...takenMap } },
+        logs:     { ...logs,     [selectedDate]: { ...takenMap } },
         measurements,
       }
-      const next = applyActions(current, ephemeral, today)
+      const next = applyActions(current, ephemeral, selectedDate)
 
       // Pull values back into component state.
-      const newCheckin = next.checkins[today] || {}
+      const newCheckin = next.checkins[selectedDate] || {}
       const newScores = newCheckin.scores || {}
       const nextScores = {}
       for (const m of metrics) {
         nextScores[m.id] = newScores[m.id] ?? scores[m.id] ?? DEFAULT_SCORE
       }
       setScores(nextScores)
-      setTakenMap({ ...takenMap, ...(next.logs[today] || {}) })
+      setTakenMap({ ...takenMap, ...(next.logs[selectedDate] || {}) })
 
       if (message) setAiMsg(message)
     } catch (err) {
@@ -167,15 +188,15 @@ export default function CheckinScreen() {
   const handleLogDay = () => {
     const payload = { scores: { ...scores } }
     if (pro && notes.trim()) payload.notes = notes.trim()
-    upsertCheckin(payload, today)
-    const logPayload = { ...seedTakenFor(today, interventions, {}), ...takenMap }
+    upsertCheckin(payload, selectedDate)
+    const logPayload = { ...seedTakenFor(selectedDate, interventions, {}), ...takenMap }
     // Persist quantities for interventions that track them
     const activeQty = {}
     for (const i of interventions.filter(x => x.status !== 'stopped' && x.trackQuantity)) {
       if (quantityMap[i.id] != null) activeQty[i.id] = quantityMap[i.id]
     }
     if (Object.keys(activeQty).length) logPayload._quantities = activeQty
-    upsertLog(logPayload, today)
+    upsertLog(logPayload, selectedDate)
     setJustLogged(true)
     setEditing(false)
     // The LogConfirmation overlay manages its own auto-dismiss timer and
@@ -186,7 +207,13 @@ export default function CheckinScreen() {
   if (!metrics || metrics.length === 0) {
     return (
       <div className="fade-in">
-        <Header date={today} />
+        <Header
+          date={selectedDate}
+          isToday={isToday}
+          onBack={goBack}
+          onForward={goForward}
+          canGoForward={selectedDate < today}
+        />
         <div style={styles.empty}>
           No metrics set up yet. Finish onboarding or seed sample data in Insights → Dev tools.
         </div>
@@ -194,23 +221,31 @@ export default function CheckinScreen() {
     )
   }
 
-  // ===== Read-only view (already checked in today) =====
+  // ===== Read-only view (already checked in for this date) =====
   if (!editing) {
     return (
       <div className="fade-in">
-        <Header date={today} />
+        <Header
+          date={selectedDate}
+          isToday={isToday}
+          onBack={goBack}
+          onForward={goForward}
+          canGoForward={selectedDate < today}
+        />
         <ReadOnlySummary
-          checkin={todaysCheckin}
+          checkin={selectedCheckin}
           metrics={metrics}
           interventions={interventions}
-          log={logs[today] || {}}
+          log={logs[selectedDate] || {}}
           today={today}
+          selectedDate={selectedDate}
           checkins={checkins}
           logs={logs}
           onEdit={() => setEditing(true)}
+          onDayTap={jumpTo}
         />
         {justLogged && (
-          <LogConfirmation date={today} onDismiss={() => setJustLogged(false)} />
+          <LogConfirmation date={selectedDate} onDismiss={() => setJustLogged(false)} />
         )}
       </div>
     )
@@ -219,7 +254,13 @@ export default function CheckinScreen() {
   // ===== Edit view =====
   return (
     <div className="fade-in">
-      <Header date={today} />
+      <Header
+        date={selectedDate}
+        isToday={isToday}
+        onBack={goBack}
+        onForward={goForward}
+        canGoForward={selectedDate < today}
+      />
 
       <section style={{ marginBottom: 8 }}>
         <VoiceInput onSend={handleAISend} busy={aiBusy} />
@@ -298,25 +339,56 @@ export default function CheckinScreen() {
         className="btn btn-primary btn-block"
         onClick={handleLogDay}
       >
-        Log day
+        {isToday ? 'Log day' : `Save ${formatDateFull(selectedDate)}`}
       </button>
     </div>
   )
 }
 
 // ---------- Subcomponents ----------
-function Header({ date }) {
+function Header({ date, isToday, onBack, onForward, canGoForward }) {
   return (
     <header style={styles.header}>
       <div style={styles.brand}>TRACKED</div>
-      <time className="mono" style={styles.date} dateTime={date}>
-        {formatDateFull(date)}
-      </time>
+      <div style={styles.dateNav}>
+        <button
+          type="button"
+          onClick={onBack}
+          style={styles.navArrow}
+          aria-label="Previous day"
+        >
+          ‹
+        </button>
+        <time
+          className="mono"
+          style={{
+            ...styles.date,
+            color: isToday ? 'var(--t3)' : 'var(--accent)',
+            fontWeight: isToday ? 400 : 600,
+          }}
+          dateTime={date}
+        >
+          {formatDateFull(date)}
+        </time>
+        <button
+          type="button"
+          onClick={onForward}
+          disabled={!canGoForward}
+          style={{
+            ...styles.navArrow,
+            opacity: canGoForward ? 1 : 0.25,
+            cursor: canGoForward ? 'pointer' : 'default',
+          }}
+          aria-label="Next day"
+        >
+          ›
+        </button>
+      </div>
     </header>
   )
 }
 
-function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins, logs, onEdit }) {
+function ReadOnlySummary({ checkin, metrics, interventions, log, today, selectedDate, checkins, logs, onEdit, onDayTap }) {
   const active = interventions.filter(i => i.status !== 'stopped')
   const takenCount = active.filter(i => log[i.id] !== false).length
   const quantities = log._quantities || {}
@@ -329,7 +401,9 @@ function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins
   return (
     <div>
       <div style={styles.editRow}>
-        <span className="label-section">Today's check-in</span>
+        <span className="label-section">
+          {selectedDate === today ? "Today's check-in" : 'Check-in'}
+        </span>
         <button type="button" className="btn btn-ghost" style={styles.editBtn} onClick={onEdit}>
           Edit
         </button>
@@ -400,9 +474,11 @@ function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins
 
       <SevenDayStrip
         today={today}
+        selectedDate={selectedDate}
         checkins={checkins || {}}
         logs={logs || {}}
         metrics={metrics}
+        onDayTap={onDayTap}
       />
 
       {checkin?.notes && (
@@ -418,7 +494,7 @@ function ReadOnlySummary({ checkin, metrics, interventions, log, today, checkins
 // Seven-day completion strip. A day counts as "complete" if the user has a
 // scores-complete check-in for it. A day with *some* data (partial scores or
 // any stack log) counts as partial. Everything else is empty.
-function SevenDayStrip({ today, checkins, logs, metrics }) {
+function SevenDayStrip({ today, selectedDate, checkins, logs, metrics, onDayTap }) {
   const days = []
   for (let i = 6; i >= 0; i--) {
     const iso = addDaysIso(today, -i)
@@ -433,6 +509,7 @@ function SevenDayStrip({ today, checkins, logs, metrics }) {
       letter: weekdayLetter(iso),
       state,
       isToday: iso === today,
+      isSelected: iso === (selectedDate || today),
     })
   }
 
@@ -448,26 +525,35 @@ function SevenDayStrip({ today, checkins, logs, metrics }) {
               : 'transparent'
           const border = d.state === 'empty' ? 'var(--b1)' : 'var(--accent)'
           return (
-            <div key={d.iso} style={styles.stripCell}>
+            <button
+              type="button"
+              key={d.iso}
+              onClick={() => onDayTap?.(d.iso)}
+              style={{ ...styles.stripCell, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            >
               <div
                 aria-label={`${d.iso} ${d.state}`}
                 style={{
                   ...styles.stripDot,
                   background: fill,
                   borderColor: border,
-                  boxShadow: d.isToday ? '0 0 0 3px var(--accent-subtle)' : 'none',
+                  boxShadow: d.isSelected
+                    ? '0 0 0 3px var(--accent)'
+                    : d.isToday
+                      ? '0 0 0 3px var(--accent-subtle)'
+                      : 'none',
                 }}
               />
               <span
                 style={{
                   ...styles.stripLabel,
-                  color: d.isToday ? 'var(--t1)' : 'var(--t3)',
-                  fontWeight: d.isToday ? 600 : 400,
+                  color: d.isSelected ? 'var(--t1)' : d.isToday ? 'var(--t2)' : 'var(--t3)',
+                  fontWeight: d.isSelected ? 600 : d.isToday ? 500 : 400,
                 }}
               >
                 {d.letter}
               </span>
-            </div>
+            </button>
           )
         })}
       </div>
@@ -540,6 +626,22 @@ const styles = {
     fontWeight: 600,
     letterSpacing: '0.12em',
     color: 'var(--t1)',
+  },
+  dateNav: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  navArrow: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--t2)',
+    fontSize: 20,
+    lineHeight: 1,
+    padding: '4px 6px',
+    cursor: 'pointer',
+    borderRadius: 6,
+    WebkitTapHighlightColor: 'transparent',
   },
   date: {
     fontSize: 13,
